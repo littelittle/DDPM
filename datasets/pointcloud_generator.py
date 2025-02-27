@@ -46,5 +46,6 @@ def sample_points_on_cuboid_surface(x, y, z, num_points, noise=0.0):
     return points
 
 if __name__ == "__main__":
-    points = sample_points_on_cuboid_surface(1, 2, 3, 1024, noise=0.03)
+    # test the code 
+    points = sample_points_on_cuboid_surface(*generate_xyz(1, 3), 1024, noise=0.03)
     write_obj(points, "datasets/test_points.obj")
