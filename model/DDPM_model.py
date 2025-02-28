@@ -88,7 +88,7 @@ class ConditionedDiffusionModel(nn.Module):
     def forward(self, x, cond, t):
         # 输入维度验证
         # x: [batch, data_dim]
-        # cond: [batch, cond_size, cond_size]
+        # cond: [batch, n, 3]
         # t: [batch]
         
         # 获取各组件编码

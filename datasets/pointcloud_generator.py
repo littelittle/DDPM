@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.spatial.transform import Rotation as R
 
 def write_obj(points: np.ndarray, file_path: str):
     if not isinstance(points, np.ndarray) or points.shape[1] != 3:
@@ -44,6 +45,40 @@ def sample_points_on_cuboid_surface(x, y, z, num_points, noise=0.0):
     
     points += noise * np.random.randn(*points.shape)
     return points
+
+def add_random_rotation(point_cloud: np.ndarray):
+    R_M = R.random().as_matrix()
+    return point_cloud@R_M, R_M
+
+def face_generator(x, y, z):
+    """
+    Generate the six rectangular faces of a cuboid given its dimensions x, y, and z.
+    Returns a list of numpy arrays, each containing the four vertices of a face.
+    """
+    # Define the 8 vertices of the cuboid
+    vertices = np.array([
+        [0, 0, 0], [x, 0, 0], [x, y, 0], [0, y, 0],  # Bottom face
+        [0, 0, z], [x, 0, z], [x, y, z], [0, y, z]   # Top face
+    ])
+    
+    # centralize to (0,0,0)
+    vertices = vertices - np.mean(vertices, axis=0)
+
+    # add random rotation
+    vertices, R_M = add_random_rotation(vertices)
+
+    # Define the six faces using vertex indices
+    faces = [
+        [vertices[3], vertices[2], vertices[1], vertices[0]],  # Bottom face
+        [vertices[4], vertices[5], vertices[6], vertices[7]],  # Top face
+        [vertices[0], vertices[1], vertices[5], vertices[4]],  # Front face
+        [vertices[2], vertices[3], vertices[7], vertices[6]],  # Back face
+        [vertices[4], vertices[7], vertices[3], vertices[0]],  # Left face
+        [vertices[1], vertices[2], vertices[6], vertices[5]]   # Right face
+    ]
+    
+    return [np.array(face) for face in faces], R_M
+
 
 if __name__ == "__main__":
     # test the code 
