@@ -1,0 +1,11 @@
+experiments_name: simple_trial_3_1
+
+dataset:
+  dataset_size: 1024
+  ray_tracing:
+    r: 2
+    num_rays: 512
+    num_points: 100
+
+dataloader:
+  batch_size: 16

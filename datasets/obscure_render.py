@@ -1,5 +1,4 @@
 import numpy as np
-import threading
 from pointcloud_generator import *
 from concurrent.futures import ThreadPoolExecutor
 
@@ -83,11 +82,11 @@ def ray_rectangle_intersection(ray_origin, ray_dir, vertices, j):
 
     return p if (in_tri1 or in_tri2) else None
 
-def ray_tracing(r, num_rays):
+def ray_tracing(r, num_rays, max_points=100):
     # generate all the rays
     ray_origin, ray_dir = ray_generator(r, num_rays)
     # generate all the faces
-    faces = face_generator(*generate_xyz(1, 3))[0]
+    faces, rotation = face_generator(*generate_xyz(1, 3))
     # initialize rendered points list
     renderd_points = [] 
     for i in range(num_rays):
@@ -96,7 +95,9 @@ def ray_tracing(r, num_rays):
             if p is not None:
                 renderd_points.append(p)
                 break
-    return np.stack(renderd_points)
+        if len(renderd_points) >= max_points:
+            break
+    return np.stack(renderd_points), rotation
 
 def process_ray(i, ray_origin, ray_dir, faces):
     for j in range(6):
@@ -107,13 +108,13 @@ def process_ray(i, ray_origin, ray_dir, faces):
 
 def ray_tracing_parallel(r, num_rays):
     ray_origin, ray_dir = ray_generator(r, num_rays)
-    faces = face_generator(*generate_xyz(1, 3))[0]
+    faces, rotation = face_generator(*generate_xyz(1, 3))
     
     with ThreadPoolExecutor() as executor:
         results = list(executor.map(lambda i: process_ray(i, ray_origin, ray_dir, faces), range(num_rays)))
     
     renderd_points = [p for p in results if p is not None]
-    return np.stack(renderd_points)
+    return np.stack(renderd_points), rotation
 
 ################# the relationship between radius and hit rate ############
 def plot_rh_curve():
@@ -134,4 +135,6 @@ def plot_rh_curve():
 
 if __name__ == "__main__":
     #  simple test
-    plot_rh_curve()
+    # plot_rh_curve()
+    rendered_points, _ = ray_tracing(2, 512)
+    write_obj(rendered_points, 'datasets/test_render.obj')

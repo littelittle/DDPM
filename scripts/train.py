@@ -1,5 +1,10 @@
+import sys
+import os 
+sys.path.append(os.getcwd())
+
 import torch
 from model.DDPM_model import *
+from datasets.real_time_dataset import *
 
 
 # 参数配置

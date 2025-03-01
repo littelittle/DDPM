@@ -53,7 +53,9 @@ def add_random_rotation(point_cloud: np.ndarray):
 def face_generator(x, y, z):
     """
     Generate the six rectangular faces of a cuboid given its dimensions x, y, and z.
-    Returns a list of numpy arrays, each containing the four vertices of a face.
+    Returns a list of numpy arrays, each containing the four vertices of a face, and the rotation matrix.
+    Remember, the rotation matrix is mutiplied on the right, which means that we need to retrive the row of the matrix
+    to get the correct axis.
     """
     # Define the 8 vertices of the cuboid
     vertices = np.array([
