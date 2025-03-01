@@ -3,23 +3,23 @@ import torch.nn as nn
 import math
 
 # ======================
-# 时间步相关参数规划模块
+# Time step related parameter planning module
 # ======================
 def linear_beta_schedule(timesteps, beta_start=1e-4, beta_end=0.02):
-    """线性beta调度器，返回所有时间步的beta值"""
+    """Linear beta scheduler, returns beta values for all time steps"""
     return torch.linspace(beta_start, beta_end, timesteps)
 
 def get_alphas(betas):
-    """根据beta计算alpha和累积alpha乘积"""
+    """Calculate alpha and cumulative alpha product based on beta"""
     alphas = 1. - betas
     alphas_cumprod = torch.cumprod(alphas, dim=0)
     return alphas, alphas_cumprod
 
 # ======================
-# 时间步编码模块
+# Time step encoding module
 # ======================
 class SinusoidalPositionEmbeddings(nn.Module):
-    """正弦位置编码器，将时间步t映射为高维向量"""
+    """Sinusoidal position encoder, mapping time step t to a high-dimensional vector"""
     def __init__(self, dim):
         super().__init__()
         self.dim = dim
@@ -34,7 +34,7 @@ class SinusoidalPositionEmbeddings(nn.Module):
         return embeddings
 
 # ======================
-# 条件编码模块
+# Conditional Encoding Module
 # ======================
 class ConditionEncoder(nn.Module):
     """条件编码器，处理n*n维的条件输入"""
@@ -55,10 +55,10 @@ class ConditionEncoder(nn.Module):
         return self.main(cond.unsqueeze(1))  # 添加通道维度
 
 # ======================
-# 核心网络模型
+# Core Network Model
 # ======================
 class ConditionedDiffusionModel(nn.Module):
-    """条件扩散模型主体"""
+    """Conditional Diffusion Model Body"""
     def __init__(self, 
                  data_dim=6, 
                  cond_size=28,
@@ -66,17 +66,14 @@ class ConditionedDiffusionModel(nn.Module):
                  cond_emb_dim=128):
         super().__init__()
         
-        # 时间步编码器
         self.time_mlp = nn.Sequential(
             SinusoidalPositionEmbeddings(time_emb_dim),
             nn.Linear(time_emb_dim, time_emb_dim),
             nn.ReLU()
         )
         
-        # 条件编码器
         self.cond_encoder = ConditionEncoder(cond_size, cond_emb_dim)
         
-        # 噪声预测网络
         self.main = nn.Sequential(
             nn.Linear(data_dim + time_emb_dim + cond_emb_dim, 256),
             nn.ReLU(),
@@ -86,60 +83,60 @@ class ConditionedDiffusionModel(nn.Module):
         )
         
     def forward(self, x, cond, t):
-        # 输入维度验证
+        # Input Dimension Validation
         # x: [batch, data_dim]
         # cond: [batch, n, 3]
         # t: [batch]
         
-        # 获取各组件编码
+        # Get the embedding of each component
         t_emb = self.time_mlp(t)  # [batch, time_emb_dim]
         cond_emb = self.cond_encoder(cond)  # [batch, cond_emb_dim]
         
-        # 拼接所有特征
+        # concatinate all the features
         combined = torch.cat([x, t_emb, cond_emb], dim=1)
         
-        # 预测噪声
+        # predict all the noise
         return self.main(combined)
 
 # ======================
-# 训练流程函数
+# Training process function
 # ======================
 def train_step(model, x0, cond, alphas_cumprod, device, optimizer, loss_fn):
     """
-    单次训练步骤
-    参数:
-        model: 扩散模型
-        x0: 原始数据 [batch, data_dim]
-        cond: 条件数据 [batch, cond_size, cond_size]
-        alphas_cumprod: 预计算的alpha累积乘积
-        device: 计算设备
-        optimizer: 优化器
-        loss_fn: 损失函数
+    Single training step
+    Params:
+        model: DDPM
+        x0: rotation [batch, 6]
+        cond: partial points [batch, num_points, 3]
+        alphas_cumprod: precomputed alpha cumulative product
+        device: compute device
+        optimizer: Adam
+        loss_fn: MSE_loss
     """
     model.train()
     
-    # 准备数据
+    # transfer data
     batch_size = x0.shape[0]
     x0 = x0.to(device)
     cond = cond.to(device)
     
-    # 随机采样时间步
+    # Randomly sample time steps
     t = torch.randint(0, len(alphas_cumprod), (batch_size,), device=device).long()
     
-    # 计算alpha_bar
+    # compute alpha_bar
     alpha_bar = alphas_cumprod[t].unsqueeze(-1)  # [batch, 1]
     
-    # 生成带噪数据
-    eps = torch.randn_like(x0)  # 真实噪声
+    # generate the noise
+    eps = torch.randn_like(x0)  # true noise
     xt = torch.sqrt(alpha_bar) * x0 + torch.sqrt(1 - alpha_bar) * eps
     
-    # 预测噪声
+    # predict the noise
     pred_eps = model(xt, cond, t)
     
-    # 计算损失
+    # compute loss
     loss = loss_fn(pred_eps, eps)
     
-    # 反向传播
+    # back propagation
     optimizer.zero_grad()
     loss.backward()
     optimizer.step()
@@ -147,41 +144,41 @@ def train_step(model, x0, cond, alphas_cumprod, device, optimizer, loss_fn):
     return loss.item()
 
 # ======================
-# 采样生成函数
+# Sampling Generating Function
 # ======================
 @torch.no_grad()
 def sample(model, cond, alphas, alphas_cumprod, device, num_steps=1000):
     """
-    采样生成过程
-    参数:
-        model: 训练好的模型
-        cond: 条件数据 [1, cond_size, cond_size]
-        alphas: 预计算的alpha值
-        alphas_cumprod: 预计算的alpha累积乘积
-        device: 计算设备
-        num_steps: 总时间步数
+    Sampling Generation Process
+    Params:
+        model: trained model
+        cond: conditional data (partial points) [1, num_points, 3]
+        alphas: Precomputed alpha values
+        alphas_cumprod: Precomputed alpha cumulative product
+        device: compute device
+        num_steps: total steps
     """
     model.eval()
     
-    # 初始化纯噪声
+    # Initialize pure noise
     x = torch.randn(1, model.main[-1].out_features).to(device)
     cond = cond.unsqueeze(0).to(device)
     
-    # 逐步去噪
+    # Stepwise Denoising
     for t in reversed(range(num_steps)):
         t_batch = torch.full((1,), t, device=device, dtype=torch.long)
         pred_eps = model(x, cond, t_batch)
         
-        # 计算alpha相关参数
+        # Calculate alpha related parameters
         alpha_t = alphas[t]
         alpha_bar_t = alphas_cumprod[t]
         alpha_bar_t_prev = alphas_cumprod[t-1] if t > 0 else torch.tensor(1.0)
         
-        # 计算反向过程参数
+        # Calculate the reverse process parameters
         beta_tilde_t = (1 - alpha_bar_t_prev)/(1 - alpha_bar_t) * (1 - alpha_t)
         pred_x0 = (x - torch.sqrt(1 - alpha_bar_t) * pred_eps) / torch.sqrt(alpha_bar_t)
         
-        # 反向过程采样
+        # Reverse process sampling
         mean = (x - (1 - alpha_t)/torch.sqrt(1 - alpha_bar_t) * pred_eps) / torch.sqrt(alpha_t)
         if t > 0:
             noise = torch.randn_like(x)
