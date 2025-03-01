@@ -2,8 +2,8 @@ import sys
 import os 
 sys.path.append(os.getcwd())
 from torch.utils.data import Dataset, DataLoader
-from pointcloud_generator import *
-from obscure_render import *
+from datasets.pointcloud_generator import *
+from datasets.obscure_render import *
 from configs.load_config import load_config
 
 class RealTimeDataset(Dataset):

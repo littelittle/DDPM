@@ -1,5 +1,5 @@
 import numpy as np
-from pointcloud_generator import *
+from datasets.pointcloud_generator import *
 from concurrent.futures import ThreadPoolExecutor
 
 
@@ -97,6 +97,12 @@ def ray_tracing(r, num_rays, max_points=100):
                 break
         if len(renderd_points) >= max_points:
             break
+
+    renderd_points = np.stack(renderd_points)
+    if renderd_points.shape[0] < 100:
+        # repeat sampling
+        n_repeat = int(np.ceil(100 / renderd_points.shape[0]))
+        renderd_points = np.tile(renderd_points, (n_repeat, 1))[:100]
     return np.stack(renderd_points), rotation
 
 def process_ray(i, ray_origin, ray_dir, faces):

@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import math
+from model.pointnet import *
 
 # ======================
 # Time step related parameter planning module
@@ -9,11 +10,11 @@ def linear_beta_schedule(timesteps, beta_start=1e-4, beta_end=0.02):
     """Linear beta scheduler, returns beta values for all time steps"""
     return torch.linspace(beta_start, beta_end, timesteps)
 
-def get_alphas(betas):
+def get_alphas(betas, device):
     """Calculate alpha and cumulative alpha product based on beta"""
     alphas = 1. - betas
     alphas_cumprod = torch.cumprod(alphas, dim=0)
-    return alphas, alphas_cumprod
+    return alphas.to(device), alphas_cumprod.to(device)
 
 # ======================
 # Time step encoding module
@@ -61,7 +62,7 @@ class ConditionedDiffusionModel(nn.Module):
     """Conditional Diffusion Model Body"""
     def __init__(self, 
                  data_dim=6, 
-                 cond_size=28,
+                 data_emb_dim=128,
                  time_emb_dim=32,
                  cond_emb_dim=128):
         super().__init__()
@@ -71,11 +72,18 @@ class ConditionedDiffusionModel(nn.Module):
             nn.Linear(time_emb_dim, time_emb_dim),
             nn.ReLU()
         )
+
+        self.pose_encoder = nn.Sequential(
+            nn.Linear(6, data_emb_dim),
+            nn.ReLU(True),
+            nn.Linear(data_emb_dim, data_emb_dim),
+            nn.ReLU(True)
+        )
         
-        self.cond_encoder = ConditionEncoder(cond_size, cond_emb_dim)
+        self.cond_encoder = Pointnet()
         
         self.main = nn.Sequential(
-            nn.Linear(data_dim + time_emb_dim + cond_emb_dim, 256),
+            nn.Linear(data_emb_dim + time_emb_dim + cond_emb_dim, 256),
             nn.ReLU(),
             nn.Linear(256, 256),
             nn.ReLU(),
@@ -91,6 +99,7 @@ class ConditionedDiffusionModel(nn.Module):
         # Get the embedding of each component
         t_emb = self.time_mlp(t)  # [batch, time_emb_dim]
         cond_emb = self.cond_encoder(cond)  # [batch, cond_emb_dim]
+        x = self.pose_encoder(x)
         
         # concatinate all the features
         combined = torch.cat([x, t_emb, cond_emb], dim=1)

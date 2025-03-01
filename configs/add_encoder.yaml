@@ -1,4 +1,4 @@
-experiments_name: simple_trial_3_1
+experiments_name: simple_trial_with_encoder_3_1
 
 dataset:
   dataset_size: 1024
