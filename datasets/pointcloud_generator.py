@@ -78,6 +78,9 @@ def face_generator(x, y, z):
         [vertices[4], vertices[7], vertices[3], vertices[0]],  # Left face
         [vertices[1], vertices[2], vertices[6], vertices[5]]   # Right face
     ]
+
+    # to test if vertices really work
+    # R_M = R.random().as_matrix()
     
     return [np.array(face) for face in faces], R_M
 

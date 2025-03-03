@@ -34,26 +34,6 @@ class SinusoidalPositionEmbeddings(nn.Module):
         embeddings = torch.cat((embeddings.sin(), embeddings.cos()), dim=-1)
         return embeddings
 
-# ======================
-# Conditional Encoding Module
-# ======================
-class ConditionEncoder(nn.Module):
-    """条件编码器，处理n*n维的条件输入"""
-    def __init__(self, cond_size, output_dim):
-        super().__init__()
-        self.main = nn.Sequential(
-            nn.Conv2d(1, 64, 3, padding=1),  # 假设输入是单通道
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Conv2d(64, 128, 3, padding=1),
-            nn.ReLU(),
-            nn.MaxPool2d(2),
-            nn.Flatten(),
-            nn.Linear(128*(cond_size//4)*(cond_size//4), output_dim)
-        )
-
-    def forward(self, cond):
-        return self.main(cond.unsqueeze(1))  # 添加通道维度
 
 # ======================
 # Core Network Model
@@ -64,7 +44,7 @@ class ConditionedDiffusionModel(nn.Module):
                  data_dim=6, 
                  data_emb_dim=128,
                  time_emb_dim=32,
-                 cond_emb_dim=128):
+                 cond_emb_dim=256):
         super().__init__()
         
         self.time_mlp = nn.Sequential(
@@ -80,12 +60,10 @@ class ConditionedDiffusionModel(nn.Module):
             nn.ReLU(True)
         )
         
-        self.cond_encoder = Pointnet()
+        self.cond_encoder = Pointnet(out_feature_dim=cond_emb_dim)
         
         self.main = nn.Sequential(
             nn.Linear(data_emb_dim + time_emb_dim + cond_emb_dim, 256),
-            nn.ReLU(),
-            nn.Linear(256, 256),
             nn.ReLU(),
             nn.Linear(256, data_dim)
         )

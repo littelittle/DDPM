@@ -1,3 +1,4 @@
 datasets/*.obj
 checkpoints/
 experiments/
+__pycache__

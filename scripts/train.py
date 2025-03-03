@@ -7,9 +7,10 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import Dataset, DataLoader
 from model.DDPM_model import *
 from datasets.real_time_dataset import *
+import argparse
 
 
-# 参数配置
+# hyper params
 config_path = 'configs/add_encoder.yaml'
 timesteps = 1000
 data_dim = 6
@@ -18,12 +19,21 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 # load configs
 config = load_config(config_path)
 
+# get the args from the command line
+parser = argparse.ArgumentParser()
+parser.add_argument('--experiment_name', type=str, default='default' )
+parser.add_argument('--resume', action='store_true', help="Resume training from checkpoint")
+args = parser.parse_args()
+config['experiments_name'] = args.experiment_name
+config['resume'] = args.resume
+
 writer = SummaryWriter(f'experiments/{config["experiments_name"]}')
 
 # initialize the model
 model = ConditionedDiffusionModel(
     data_dim=data_dim,
-).to(device)
+)
+start_epoch = 0
 
 # Prepare scheduling parameters
 betas = linear_beta_schedule(timesteps)
@@ -33,17 +43,31 @@ alphas, alphas_cumprod = get_alphas(betas, device)
 optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 loss_fn = nn.MSELoss()
 
+# check if to resume the checkpoints
+if config['resume']:
+    save_path = config["checkpoints_path"]+config['experiments_name']+'/'+f'latest_checkpoint.pth'
+    try:
+        checkpoint = torch.load(save_path)
+    except:
+        print(f"{save_path} not found!")
+        raise IOError
+    model.load_state_dict(checkpoint['model_state_dict'])
+    start_epoch = checkpoint['epoch']
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+model.to(device)
+
 # count the params in the model
 total_params = sum(p.numel() for p in model.parameters())
 print(f"total number of params is {total_params}")
+with open("experiments/model_param.txt", 'a') as f:
+    f.write(f"{config['experiments_name']}\n{total_params}\n")
 
 # set the dataset and the dataloader
 RTDataset = RealTimeDataset(config_path)
 RTDataloader = DataLoader(dataset=RTDataset, batch_size=config['dataloader']['batch_size'])
 
-
 for epoch in range(1000):
-    # 假设已准备好训练数据
     # rotation_batch: [batch, 3, 3] -> [batch, 6]
     # partial_points_batch: [batch, num_points, 3]
 
@@ -57,17 +81,29 @@ for epoch in range(1000):
 
     print(f"Epoch {epoch:4.0f} | Loss: {loss:4.4f}")
 
-    if epoch % 2 == 0:
+    if epoch % 10 == 0 and epoch != 0:
         checkpoint = {
                 'epoch': epoch+1,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict()
             }
-        save_path = config["checkpoints_path"]+config['experiments_name']+f'checkpoint_epoch_{epoch+1}.pth'
-        if not os.path.exists(config["checkpoints_path"]):
-            os.mkdir(config["checkpoints_path"])
+        save_path = config["checkpoints_path"]+config['experiments_name']+'/'+f'checkpoint_epoch_{epoch}.pth'
+        if not os.path.exists(config["checkpoints_path"]+config['experiments_name']+'/'):
+            os.mkdir(config["checkpoints_path"]+config['experiments_name']+'/')
         torch.save(checkpoint, save_path)
-        print(f'Checkpoint saved at epoch {epoch+1}')
+        print(f'Checkpoint saved at epoch {epoch}')
+
+    if epoch % 2 == 0 and epoch != 0:
+        checkpoint = {
+                'epoch': epoch+1,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict()
+            }
+        save_path = config["checkpoints_path"]+config['experiments_name']+'/'+f'latest_checkpoint.pth'
+        if not os.path.exists(config["checkpoints_path"]+config['experiments_name']+'/'):
+            os.mkdir(config["checkpoints_path"]+config['experiments_name']+'/')
+        torch.save(checkpoint, save_path)
+        print(f'Checkpoint latest saved at epoch {epoch}')
 
 
 writer.flush()
