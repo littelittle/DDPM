@@ -42,9 +42,9 @@ class ConditionedDiffusionModel(nn.Module):
     """Conditional Diffusion Model Body"""
     def __init__(self, 
                  data_dim=6, 
-                 data_emb_dim=128,
+                 data_emb_dim=32,
                  time_emb_dim=32,
-                 cond_emb_dim=256):
+                 cond_emb_dim=128):
         super().__init__()
         
         self.time_mlp = nn.Sequential(
@@ -60,11 +60,15 @@ class ConditionedDiffusionModel(nn.Module):
             nn.ReLU(True)
         )
         
-        self.cond_encoder = Pointnet(out_feature_dim=cond_emb_dim)
+        self.cond_encoder1 = Pointnet(out_feature_dim=cond_emb_dim)
+
+        self.cond_encoder2 = Pointnet(out_feature_dim=cond_emb_dim)
+
+        self.fuse_cond = nn.Linear(256, 128)
         
         self.main = nn.Sequential(
             nn.Linear(data_emb_dim + time_emb_dim + cond_emb_dim, 256),
-            nn.ReLU(),
+            nn.Mish(),
             nn.Linear(256, data_dim)
         )
         
@@ -76,7 +80,9 @@ class ConditionedDiffusionModel(nn.Module):
         
         # Get the embedding of each component
         t_emb = self.time_mlp(t)  # [batch, time_emb_dim]
-        cond_emb = self.cond_encoder(cond)  # [batch, cond_emb_dim]
+        cond_emb1 = self.cond_encoder1(cond)  # [batch, cond_emb_dim]
+        cond_emb2 = self.cond_encoder2(cond)
+        cond_emb = F.relu(self.fuse_cond(torch.cat([cond_emb1, cond_emb2], dim=1)))
         x = self.pose_encoder(x)
         
         # concatinate all the features

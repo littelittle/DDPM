@@ -41,17 +41,15 @@ class Pointnet(nn.Module):
         self.con2 = nn.Conv1d(8, 32, 1)
 
         self.tnet2 = Tnet(32, 64)
-        self.con3 = nn.Conv1d(32, 128, 1)
-        self.con_add = nn.Conv1d(128, 128, 1)
-        self.con4 = nn.Conv1d(128, 256, 1)
+        self.con3 = nn.Conv1d(32, 64, 1)
+        self.con_add = nn.Conv1d(64, 64, 1)
+        self.con4 = nn.Conv1d(64, 128, 1)
 
         self.bn1 = nn.BatchNorm1d(8)
         self.bn2 = nn.BatchNorm1d(32)
-        self.bn3 = nn.BatchNorm1d(128)
-        self.bn_add = nn.BatchNorm1d(128)
-        self.bn4 = nn.BatchNorm1d(256)
-
-        self.fc1 = nn.Linear(256, out_feature_dim)
+        self.bn3 = nn.BatchNorm1d(64)
+        self.bn_add = nn.BatchNorm1d(64)
+        self.bn4 = nn.BatchNorm1d(128)
 
 
     def forward(self, x):
@@ -71,8 +69,7 @@ class Pointnet(nn.Module):
         x = F.relu(self.bn_add(self.con_add(x)))
         x = F.relu(self.bn4(self.con4(x)))
 
-        x = torch.max(x, dim=-1)[0]
-        x = F.relu(self.fc1(x))
+        x = torch.mean(x, dim=-1)
 
         return x
 
