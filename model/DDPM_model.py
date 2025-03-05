@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import math
 from model.pointnet import *
+from model.pts_encoder.pointnet2 import *
 
 # ======================
 # Time step related parameter planning module
@@ -34,6 +35,16 @@ class SinusoidalPositionEmbeddings(nn.Module):
         embeddings = torch.cat((embeddings.sin(), embeddings.cos()), dim=-1)
         return embeddings
 
+class GaussianFourierProjection(nn.Module):
+    """Gaussian random features for encoding time steps."""
+    def __init__(self, embed_dim, scale=30.):
+        super().__init__()
+        # Randomly sample weights during initialization. These weights are fixed
+        # during optimization and are not trainable.
+        self.W = nn.Parameter(torch.randn(embed_dim // 2) * scale, requires_grad=False)
+    def forward(self, x):
+        x_proj = x[:, None] * self.W[None, :] * 2 * np.pi
+        return torch.cat([torch.sin(x_proj), torch.cos(x_proj)], dim=-1).squeeze(1)
 
 # ======================
 # Core Network Model
@@ -42,30 +53,29 @@ class ConditionedDiffusionModel(nn.Module):
     """Conditional Diffusion Model Body"""
     def __init__(self, 
                  data_dim=6, 
-                 data_emb_dim=32,
-                 time_emb_dim=32,
-                 cond_emb_dim=128):
+                 data_emb_dim=256,
+                 time_emb_dim=128,
+                 cond_emb_dim=1024):
         super().__init__()
         
         self.time_mlp = nn.Sequential(
-            SinusoidalPositionEmbeddings(time_emb_dim),
+            GaussianFourierProjection(embed_dim = time_emb_dim),
             nn.Linear(time_emb_dim, time_emb_dim),
             nn.ReLU()
         )
 
         self.pose_encoder = nn.Sequential(
             nn.Linear(6, data_emb_dim),
-            nn.ReLU(True),
+            nn.ReLU(),
             nn.Linear(data_emb_dim, data_emb_dim),
-            nn.ReLU(True)
+            nn.ReLU()
         )
         
-        self.cond_encoder1 = Pointnet(out_feature_dim=cond_emb_dim)
+        self.cond_encoder1 = Pointnet2ClsMSG(0)
 
-        self.cond_encoder2 = Pointnet(out_feature_dim=cond_emb_dim)
+        # self.cond_encoder2 = Pointnet(out_feature_dim=cond_emb_dim)
 
-        self.fuse_cond = nn.Linear(256, 128)
-        
+        # self.fuse_cond = nn.Linear(256, 128)
         self.main = nn.Sequential(
             nn.Linear(data_emb_dim + time_emb_dim + cond_emb_dim, 256),
             nn.Mish(),
@@ -80,11 +90,12 @@ class ConditionedDiffusionModel(nn.Module):
         
         # Get the embedding of each component
         t_emb = self.time_mlp(t)  # [batch, time_emb_dim]
-        cond_emb1 = self.cond_encoder1(cond)  # [batch, cond_emb_dim]
-        cond_emb2 = self.cond_encoder2(cond)
-        cond_emb = F.relu(self.fuse_cond(torch.cat([cond_emb1, cond_emb2], dim=1)))
+        # set_trace()
+        cond_emb = self.cond_encoder1(cond)  # [batch, cond_emb_dim]
+        # cond_emb2 = self.cond_encoder2(cond)
+        # cond_emb = F.relu(self.fuse_cond(torch.cat([cond_emb1, cond_emb2], dim=1)))
         x = self.pose_encoder(x)
-        
+
         # concatinate all the features
         combined = torch.cat([x, t_emb, cond_emb], dim=1)
         
@@ -134,6 +145,43 @@ def train_step(model, x0, cond, alphas_cumprod, device, optimizer, loss_fn):
     loss.backward()
     optimizer.step()
     
+    return loss.item()
+    
+# ======================
+# Training VE SDE
+# ======================
+
+def ve_marginal_prob(x, t, sigma_min=0.01, sigma_max=50):
+    std = sigma_min * (sigma_max / sigma_min) ** t
+    mean = x
+    return mean, std
+
+def train_ve_step(model, x0, cond, marginal_prob_func, device, optimizer, loss_fn, eps=1e-5):
+    model.train()
+
+    # transfer data
+    batch_size = x0.shape[0]
+    x0 = x0.to(device)
+    cond = cond.to(device)
+
+    t = torch.rand(batch_size, device=device)*(1.-eps) + eps # [bs,]
+    t = t.unsqueeze(-1)
+    mu, std = marginal_prob_func(x0, t)
+    std = std.view(-1, 1)
+
+    z = torch.rand_like(x0)
+    preturbed_x = mu + z * std
+
+    target_score = -z * std/(std ** 2)
+    estimated_score = model(preturbed_x, cond, t)
+
+    loss_weighting = std**2
+    loss = torch.mean(torch.sum((loss_weighting*(estimated_score-target_score)**2).view(batch_size, -1), dim=-1))
+
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+
     return loss.item()
 
 # ======================

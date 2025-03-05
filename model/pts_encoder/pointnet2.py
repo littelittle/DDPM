@@ -4,13 +4,14 @@ import sys
 import os
 
 sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-from networks.pts_encoder.pointnet2_utils.pointnet2.pointnet2_modules import PointnetFPModule, PointnetSAModuleMSG
-import networks.pts_encoder.pointnet2_utils.pointnet2.pytorch_utils as pt_utils
+sys.path.append(os.getcwd())
+from model.pts_encoder.pointnet2_utils.pointnet2.pointnet2_modules import PointnetFPModule, PointnetSAModuleMSG
+import model.pts_encoder.pointnet2_utils.pointnet2.pytorch_utils as pt_utils
 from ipdb import set_trace
-from configs.config import get_config
+# from configs.config import get_config
 
 
-cfg = get_config()
+# cfg = get_config()
 
 
 def get_model(input_channels=0):
@@ -30,15 +31,13 @@ MSG_CFG = {
 }
 
 MY_MSG_CFG = {
-    'NPOINTS': [100, 64, 32, 16],
-    'RADIUS': [[0.01, 0.02], [0.02, 0.04], [0.04, 0.08], [0.08, 0.16]],
-    'NSAMPLE': [[16, 32], [16, 32], [16, 32], [16, 32]],
-    'MLPS': [[[16, 16, 32], [32, 32, 64]], 
+    'NPOINTS': [100, 64, 32, None],
+    'RADIUS': [[0.02, 0.04], [0.04, 0.08], [0.08, 0.16], [None, None]],
+    'NSAMPLE': [[16, 32], [16, 32], [16, 32], [None, None]],
+    'MLPS': [[[16, 16, 32], [32, 32, 64]],
              [[64, 64, 128], [64, 96, 128]],
              [[128, 196, 256], [128, 196, 256]], 
              [[256, 256, 512], [256, 384, 512]]],
-    'FP_MLPS': [[64, 64], [128, 128], [256, 256], [512, 512]],
-    'CLS_FC': [128],
     'DP_RATIO': 0.5,
 }
 
@@ -92,14 +91,16 @@ ClsMSG_CFG_Lighter= {
 }
 
 
-if cfg.pointnet2_params == 'light':
-    SELECTED_PARAMS = ClsMSG_CFG_Light
-elif cfg.pointnet2_params == 'lighter':
-    SELECTED_PARAMS = ClsMSG_CFG_Lighter
-elif cfg.pointnet2_params == 'dense':
-    SELECTED_PARAMS = ClsMSG_CFG_Dense
-else:
-    raise NotImplementedError
+# if cfg.pointnet2_params == 'light':
+#     SELECTED_PARAMS = ClsMSG_CFG_Light
+# elif cfg.pointnet2_params == 'lighter':
+#     SELECTED_PARAMS = ClsMSG_CFG_Lighter
+# elif cfg.pointnet2_params == 'dense':
+#     SELECTED_PARAMS = ClsMSG_CFG_Dense
+# else:
+#     raise NotImplementedError
+
+SELECTED_PARAMS = MY_MSG_CFG
 
 
 class Pointnet2MSG(nn.Module):
@@ -114,7 +115,7 @@ class Pointnet2MSG(nn.Module):
             mlps = MSG_CFG['MLPS'][k].copy()
             channel_out = 0
             for idx in range(mlps.__len__()):
-                mlps[idx] = [channel_in] + mlps[idx]
+                mlps[idx] = [channel_in] + mlps[idx]  # add the channel in to the mlps' input part 
                 channel_out += mlps[idx][-1]
 
             self.SA_modules.append(
@@ -167,7 +168,7 @@ class Pointnet2MSG(nn.Module):
             l_xyz.append(li_xyz)
             l_features.append(li_features)
 
-        set_trace()
+        # set_trace()
         for i in range(-1, -(len(self.FP_modules) + 1), -1):
             l_features[i - 1] = self.FP_modules[i](
                 l_xyz[i - 1], l_xyz[i], l_features[i - 1], l_features[i]
@@ -229,8 +230,9 @@ if __name__ == '__main__':
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     net = Pointnet2ClsMSG(0).cuda()
-    pts = torch.randn(2, 1024, 3).cuda()
-    print(torch.mean(pts, dim=1))
+    pts = torch.randn(2, 100, 3).cuda()
+    # print(torch.mean(pts, dim=1))
+    print(pts.shape)
     pre = net(pts)
     print(pre.shape)
     

@@ -54,6 +54,16 @@ if config['resume']:
     model.load_state_dict(checkpoint['model_state_dict'])
     start_epoch = checkpoint['epoch']
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+    for state in optimizer.state.values():
+        for k, v in state.items():
+            if isinstance(v, torch.Tensor):
+                # 只把 `exp_avg` 和 `exp_avg_sq` 这些梯度累积量移到 CUDA
+                if k in ["exp_avg", "exp_avg_sq"]:  
+                    state[k] = v.to(device)
+                # `step` 相关的计数变量保持在 CPU
+                elif k in ["step", "max_exp_avg_sq"]:
+                    state[k] = v.cpu()
+
 
 model.to(device)
 
@@ -67,14 +77,18 @@ with open("experiments/model_param.txt", 'a') as f:
 RTDataset = RealTimeDataset(config_path)
 RTDataloader = DataLoader(dataset=RTDataset, batch_size=config['dataloader']['batch_size'])
 
-for epoch in range(1000):
+for epoch in range(epoch, epoch+1000):
     # rotation_batch: [batch, 3, 3] -> [batch, 6]
     # partial_points_batch: [batch, num_points, 3]
 
     for i, (partial_points_batch, rotation_batch) in enumerate(RTDataloader):
-        loss = train_step(
+        # loss = train_step(
+        #     model, rotation_batch[:, :2, :].view(-1, 6).to(torch.float32), partial_points_batch.to(torch.float32), 
+        #     alphas_cumprod, device, optimizer, loss_fn
+        # )
+        loss = train_ve_step(
             model, rotation_batch[:, :2, :].view(-1, 6).to(torch.float32), partial_points_batch.to(torch.float32), 
-            alphas_cumprod, device, optimizer, loss_fn
+            ve_marginal_prob, device, optimizer, loss_fn
         )
         print(f"Step{i:4.0f} | Loss:{loss:4.4f}")
         writer.add_scalars('Loss/train', {'loss':loss}, i+epoch*RTDataloader.__len__())
