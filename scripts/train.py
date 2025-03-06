@@ -77,7 +77,7 @@ with open("experiments/model_param.txt", 'a') as f:
 RTDataset = RealTimeDataset(config_path)
 RTDataloader = DataLoader(dataset=RTDataset, batch_size=config['dataloader']['batch_size'])
 
-for epoch in range(epoch, epoch+1000):
+for epoch in range(start_epoch, start_epoch+1000):
     # rotation_batch: [batch, 3, 3] -> [batch, 6]
     # partial_points_batch: [batch, num_points, 3]
 
@@ -95,7 +95,7 @@ for epoch in range(epoch, epoch+1000):
 
     print(f"Epoch {epoch:4.0f} | Loss: {loss:4.4f}")
 
-    if epoch % 10 == 0 and epoch != 0:
+    if epoch % 50 == 0 and epoch != 0:
         checkpoint = {
                 'epoch': epoch+1,
                 'model_state_dict': model.state_dict(),
