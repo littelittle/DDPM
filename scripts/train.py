@@ -40,7 +40,7 @@ betas = linear_beta_schedule(timesteps)
 alphas, alphas_cumprod = get_alphas(betas, device)
 
 # set teh optimizer and the loss func
-optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+optimizer = torch.optim.Adam(model.parameters(), betas=(0.9, 0.999), eps=1e-8, lr=1e-3)
 loss_fn = nn.MSELoss()
 
 # check if to resume the checkpoints
@@ -95,7 +95,7 @@ for epoch in range(start_epoch, start_epoch+1000):
 
     print(f"Epoch {epoch:4.0f} | Loss: {loss:4.4f}")
 
-    if epoch % 50 == 0 and epoch != 0:
+    if epoch % 100 == 0 and epoch != 0:
         checkpoint = {
                 'epoch': epoch+1,
                 'model_state_dict': model.state_dict(),

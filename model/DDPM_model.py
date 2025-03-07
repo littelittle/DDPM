@@ -143,6 +143,13 @@ def train_step(model, x0, cond, alphas_cumprod, device, optimizer, loss_fn):
     # back propagation
     optimizer.zero_grad()
     loss.backward()
+
+    # add grad clip 
+    # torch.nn.utils.clip_grad_norm(
+    #     model.parameters(),
+    #     max_norm = 1
+    # )
+    
     optimizer.step()
     
     return loss.item()
@@ -184,48 +191,3 @@ def train_ve_step(model, x0, cond, marginal_prob_func, device, optimizer, loss_f
 
     return loss.item()
 
-# ======================
-# Sampling Generating Function
-# ======================
-@torch.no_grad()
-def sample(model, cond, alphas, alphas_cumprod, device, num_steps=1000):
-    """
-    Sampling Generation Process
-    Params:
-        model: trained model
-        cond: conditional data (partial points) [1, num_points, 3]
-        alphas: Precomputed alpha values
-        alphas_cumprod: Precomputed alpha cumulative product
-        device: compute device
-        num_steps: total steps
-    """
-    model.eval()
-    
-    # Initialize pure noise
-    x = torch.randn(1, model.main[-1].out_features).to(device)
-    cond = cond.unsqueeze(0).to(device)
-    
-    # Stepwise Denoising
-    for t in reversed(range(num_steps)):
-        t_batch = torch.full((1,), t, device=device, dtype=torch.long)
-        pred_eps = model(x, cond, t_batch)
-        
-        # Calculate alpha related parameters
-        alpha_t = alphas[t]
-        alpha_bar_t = alphas_cumprod[t]
-        alpha_bar_t_prev = alphas_cumprod[t-1] if t > 0 else torch.tensor(1.0)
-        
-        # Calculate the reverse process parameters
-        beta_tilde_t = (1 - alpha_bar_t_prev)/(1 - alpha_bar_t) * (1 - alpha_t)
-        pred_x0 = (x - torch.sqrt(1 - alpha_bar_t) * pred_eps) / torch.sqrt(alpha_bar_t)
-        
-        # Reverse process sampling
-        mean = (x - (1 - alpha_t)/torch.sqrt(1 - alpha_bar_t) * pred_eps) / torch.sqrt(alpha_t)
-        if t > 0:
-            noise = torch.randn_like(x)
-        else:
-            noise = torch.zeros_like(x)
-        
-        x = mean + torch.sqrt(beta_tilde_t) * noise
-    
-    return pred_x0.squeeze(0)
