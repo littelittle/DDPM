@@ -46,31 +46,35 @@ class ConditionedDiffusionModel(nn.Module):
                  time_emb_dim=32,
                  cond_emb_dim=128):
         super().__init__()
-        
+        self.data_dim = 6
         self.time_mlp = nn.Sequential(
             SinusoidalPositionEmbeddings(time_emb_dim),
             nn.Linear(time_emb_dim, time_emb_dim),
             nn.ReLU()
         )
 
-        self.pose_encoder = nn.Sequential(
-            nn.Linear(6, data_emb_dim),
-            nn.ReLU(True),
-            nn.Linear(data_emb_dim, data_emb_dim),
-            nn.ReLU(True)
-        )
+        # self.pose_encoder = nn.Sequential(
+        #     nn.Linear(6, data_emb_dim),
+        #     nn.ReLU(True),
+        #     nn.Linear(data_emb_dim, data_emb_dim),
+        #     nn.ReLU(True)
+        # )
         
         self.cond_encoder1 = Pointnet(out_feature_dim=cond_emb_dim)
 
         self.cond_encoder2 = Pointnet(out_feature_dim=cond_emb_dim)
 
-        self.fuse_cond = nn.Linear(256, 128)
-        
-        self.main = nn.Sequential(
-            nn.Linear(data_emb_dim + time_emb_dim + cond_emb_dim, 256),
+        self.fuse_cond = nn.Sequential(
+            nn.Linear(256+time_emb_dim, 128), 
             nn.Mish(),
-            nn.Linear(256, data_dim)
+            nn.Linear(128, (data_dim+1)*data_dim),
         )
+        
+        # self.main = nn.Sequential(
+        #     nn.Linear(data_emb_dim + time_emb_dim + cond_emb_dim, 256),
+        #     nn.Mish(),
+        #     nn.Linear(256, data_dim)
+        # )
         
     def forward(self, x, cond, t):
         # Input Dimension Validation
@@ -82,14 +86,21 @@ class ConditionedDiffusionModel(nn.Module):
         t_emb = self.time_mlp(t)  # [batch, time_emb_dim]
         cond_emb1 = self.cond_encoder1(cond)  # [batch, cond_emb_dim]
         cond_emb2 = self.cond_encoder2(cond)
-        cond_emb = F.relu(self.fuse_cond(torch.cat([cond_emb1, cond_emb2], dim=1)))
-        x = self.pose_encoder(x)
+        cond_emb = F.relu(self.fuse_cond(torch.cat([cond_emb1, cond_emb2, t_emb], dim=1)))
+        b_size = cond_emb.shape[0]
+        cond_emb = cond_emb.reshape(
+            b_size, -1, self.data_dim
+        )                                         # [batch, data_dim+1, data_dim]
+        scale = cond_emb[:, 1:, :].view(-1, self.data_dim, self.data_dim)
+        bias = cond_emb[:, 0, :]
+        x = torch.bmm(scale, x.unsqueeze(-1)).squeeze(-1)+bias
         
         # concatinate all the features
-        combined = torch.cat([x, t_emb, cond_emb], dim=1)
-        
+        # combined = torch.cat([x, t_emb, cond_emb], dim=1)
+
+
         # predict all the noise
-        return self.main(combined)
+        return x
 
 # ======================
 # Training process function
