@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from torch.nn.utils import clip_grad_norm_
 import math
 from model.pointnet import *
 from model.pts_encoder.pointnet2 import *
@@ -65,7 +66,7 @@ class ConditionedDiffusionModel(nn.Module):
         )
 
         self.pose_encoder = nn.Sequential(
-            nn.Linear(6, data_emb_dim),
+            nn.Linear(data_dim, data_emb_dim),
             nn.ReLU(),
             nn.Linear(data_emb_dim, data_emb_dim),
             nn.ReLU()
@@ -158,10 +159,6 @@ def train_step(model, x0, cond, alphas_cumprod, device, optimizer, loss_fn):
 # Training VE SDE
 # ======================
 
-def ve_marginal_prob(x, t, sigma_min=0.01, sigma_max=50):
-    std = sigma_min * (sigma_max / sigma_min) ** t
-    mean = x
-    return mean, std
 
 def train_ve_step(model, x0, cond, marginal_prob_func, device, optimizer, loss_fn, eps=1e-5):
     model.train()
@@ -173,21 +170,29 @@ def train_ve_step(model, x0, cond, marginal_prob_func, device, optimizer, loss_f
 
     t = torch.rand(batch_size, device=device)*(1.-eps) + eps # [bs,]
     t = t.unsqueeze(-1)
-    mu, std = marginal_prob_func(x0, t)
-    std = std.view(-1, 1)
+    mu, std = marginal_prob_func(x0, t)                      # mu is actually x0, and std is sigma_min*(sigma_max/sigma_min)**t
+    std = std.view(-1, 1)                                    # std size is [bs, 1]
 
-    z = torch.rand_like(x0)
+    z = torch.randn_like(x0)                                 # randn_like is sampled from the N(0, 1) !!!
     preturbed_x = mu + z * std
 
-    target_score = -z * std/(std ** 2)
-    estimated_score = model(preturbed_x, cond, t)
+    # have a try: if normalizing the preturbed_x can make a great deal
+    # preturbed_x[:, :3] = preturbed_x[:, :3]/preturbed_x[:, :3].norm()
+    # preturbed_x[:, 3:6] = preturbed_x[:, 3:6]/preturbed_x[:, 3:6].norm()
+
+    target_score = -z / (std + 1e-5)                         # get smoother
+    estimated_score = model(preturbed_x, cond, t) / (std + 1e-5) # important here! devide the std!!
 
     loss_weighting = std**2
     loss = torch.mean(torch.sum((loss_weighting*(estimated_score-target_score)**2).view(batch_size, -1), dim=-1))
 
+    # add mean loss to tensorboard
+    mean_loss = torch.mean(torch.sum((abs(estimated_score-target_score)).view(batch_size, -1), dim=-1))
+
     optimizer.zero_grad()
     loss.backward()
+    clip_grad_norm_(model.parameters(), 1.0)                                                                # attempt to make it more stable
     optimizer.step()
 
-    return loss.item()
+    return loss.item(), estimated_score.norm().item(), mean_loss.item()
 

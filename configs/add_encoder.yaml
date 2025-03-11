@@ -1,13 +1,13 @@
 experiments_name: simple_trial_with_encoder_3_1
 
 dataset:
-  dataset_size: 1024
+  dataset_size: 131072
   ray_tracing:
     r: 2
     num_rays: 512
     num_points: 100
 
 dataloader:
-  batch_size: 16
+  batch_size: 128
 
 checkpoints_path: "checkpoints/"

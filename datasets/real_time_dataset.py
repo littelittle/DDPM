@@ -28,7 +28,11 @@ class RealTimeDataset(Dataset):
         return self.len
     
     def __getitem__(self, index):
-        partial_points, rot_matrix = ray_tracing(self.r, self.num_rays, self.num_points)
+        # partial_points, rot_matrix = ray_tracing(self.r, self.num_rays, self.num_points)
+        # NOTE: Use the brand new data generator now!
+        points = sample_points_on_cuboid_surface()
+        rot_matrix = lie_group(lie_algebra())
+        partial_points = torch.from_numpy(points)@rot_matrix # not partial at all hhh
         return partial_points, rot_matrix
     
 

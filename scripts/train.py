@@ -6,6 +6,7 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.data import Dataset, DataLoader
 from model.DDPM_model import *
+from model.sampler import ve_marginal_prob
 from datasets.real_time_dataset import *
 import argparse
 
@@ -40,7 +41,7 @@ betas = linear_beta_schedule(timesteps)
 alphas, alphas_cumprod = get_alphas(betas, device)
 
 # set teh optimizer and the loss func
-optimizer = torch.optim.Adam(model.parameters(), betas=(0.9, 0.999), eps=1e-8, lr=1e-3)
+optimizer = torch.optim.Adam(model.parameters(), betas=(0.9, 0.999), eps=1e-8, lr=3e-4)
 loss_fn = nn.MSELoss()
 
 # check if to resume the checkpoints
@@ -75,7 +76,7 @@ with open("experiments/model_param.txt", 'a') as f:
 
 # set the dataset and the dataloader
 RTDataset = RealTimeDataset(config_path)
-RTDataloader = DataLoader(dataset=RTDataset, batch_size=config['dataloader']['batch_size'])
+RTDataloader = DataLoader(dataset=RTDataset, batch_size=config['dataloader']['batch_size'], num_workers=8)
 
 for epoch in range(start_epoch, start_epoch+1000):
     # rotation_batch: [batch, 3, 3] -> [batch, 6]
@@ -86,13 +87,16 @@ for epoch in range(start_epoch, start_epoch+1000):
         #     model, rotation_batch[:, :2, :].view(-1, 6).to(torch.float32), partial_points_batch.to(torch.float32), 
         #     alphas_cumprod, device, optimizer, loss_fn
         # )
-        loss = train_ve_step(
+        loss, score_norm, mean_loss = train_ve_step(
             model, rotation_batch[:, :2, :].view(-1, 6).to(torch.float32), partial_points_batch.to(torch.float32), 
             ve_marginal_prob, device, optimizer, loss_fn
         )
-        print(f"Step{i:4.0f} | Loss:{loss:4.4f}")
+        if i % 10 == 0: 
+            print(f"Step{i:4.0f} | Loss:{loss:4.4f}")
         writer.add_scalars('Loss/train', {'loss':loss}, i+epoch*RTDataloader.__len__())
-
+        writer.add_scalars('score_norm', {'norm':score_norm}, i+epoch*RTDataloader.__len__())
+        writer.add_scalars('average_l1_residual', {'residual':mean_loss}, i+epoch*RTDataloader.__len__())
+        
     print(f"Epoch {epoch:4.0f} | Loss: {loss:4.4f}")
 
     if epoch % 100 == 0 and epoch != 0:
