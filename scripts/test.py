@@ -7,10 +7,10 @@ import torch
 from model.DDPM_model import *
 from datasets.real_time_dataset import *
 from configs.load_config import load_config
-from model.sampler import cond_pc_sampler, sample
+from model.sampler import cond_pc_sampler, ddpm_sample, cond_ode_sampler
 
 @torch.no_grad()
-def test(experiment_name, sample_mode="ve_pc"):
+def test(experiment_name, sample_mode="ve_ode"):
     # hyper params
     timesteps = 1000
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -47,7 +47,9 @@ def test(experiment_name, sample_mode="ve_pc"):
         if sample_mode == "ve_pc":
             grads, pre_rotation_list, pre_rotation = cond_pc_sampler(model, partial_points.to(torch.float32))
         elif sample_mode == "sample":
-            pre_rotation = sample(model, partial_points.to(torch.float32), alphas, alphas_cumprod, device, timesteps)
+            pre_rotation = ddpm_sample(model, partial_points.to(torch.float32), alphas, alphas_cumprod, device, timesteps)
+        elif sample_mode == "ve_ode":
+            _, pre_rotation = cond_ode_sampler(model, partial_points.to(torch.float32))
         pre_rotation = pre_rotation.detach().to('cpu')
         pre_rotation = pre_rotation.squeeze(0)
         pre_x, pre_y = pre_rotation[:3], pre_rotation[3:]

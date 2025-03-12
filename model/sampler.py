@@ -148,6 +148,7 @@ def cond_ode_sampler(
         init_x=None,
     ):
     pose_dim = 6
+    cond = cond.to(device)
     batch_size=cond.shape[0]
     init_x = prior((batch_size, pose_dim), T=T).to(device)
     shape = init_x.shape
@@ -192,4 +193,4 @@ def cond_ode_sampler(
     xs[:, :3] = xs[:, :3]/xs[:, :3].norm()
     xs[:, 3:] = xs[:, 3:]/xs[:, 3:].norm()
     xs = xs.reshape(num_steps, batch_size, -1)
-    return xs.permute(1, 0, 2), x
+    return xs.permute(1, 0, 2), x.to(torch.float32)
