@@ -74,8 +74,6 @@ class ConditionedDiffusionModel(nn.Module):
         
         self.cond_encoder1 = Pointnet2ClsMSG(0)
 
-        # self.cond_encoder2 = Pointnet(out_feature_dim=cond_emb_dim)
-
         # self.fuse_cond = nn.Linear(256, 128)
         self.main = nn.Sequential(
             nn.Linear(data_emb_dim + time_emb_dim + cond_emb_dim, 256),
@@ -175,10 +173,6 @@ def train_ve_step(model, x0, cond, marginal_prob_func, device, optimizer, loss_f
 
     z = torch.randn_like(x0)                                 # randn_like is sampled from the N(0, 1) !!!
     preturbed_x = mu + z * std
-
-    # have a try: if normalizing the preturbed_x can make a great deal
-    # preturbed_x[:, :3] = preturbed_x[:, :3]/preturbed_x[:, :3].norm()
-    # preturbed_x[:, 3:6] = preturbed_x[:, 3:6]/preturbed_x[:, 3:6].norm()
 
     target_score = -z / (std + 1e-5)                         # get smoother
     estimated_score = model(preturbed_x, cond, t) / (std + 1e-5) # important here! devide the std!!

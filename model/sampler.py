@@ -152,6 +152,7 @@ def cond_ode_sampler(
     batch_size=cond.shape[0]
     init_x = prior((batch_size, pose_dim), T=T).to(device)
     shape = init_x.shape
+    total_time = 0
 
     def score_eval_wrapper(x, cond, batch_time_step):
         """A wrapper of the score-based model for use by the ODE solver."""
@@ -161,11 +162,15 @@ def cond_ode_sampler(
 
     def ode_func(t, x):      
         """The ODE function for use by the ODE solver."""
+        import time
+        nonlocal total_time
+        st = time.time()
         x = torch.tensor(x.reshape(-1, pose_dim), dtype=torch.float32, device=device)
         time_steps = torch.ones(batch_size, device=device).unsqueeze(-1) * t
         drift, diffusion = sde_coeff(torch.tensor(t))
         drift = drift.cpu().numpy()
         diffusion = diffusion.cpu().numpy()
+        total_time += time.time()-st
         return drift - 0.5 * (diffusion**2) * score_eval_wrapper(x, cond, time_steps)    
     
     # Run the black-box ODE solver, note the 
@@ -174,6 +179,7 @@ def cond_ode_sampler(
         # num_steps, from T -> eps
         t_eval = np.linspace(T, eps, num_steps)
     res = integrate.solve_ivp(ode_func, (T, eps), init_x.reshape(-1).cpu().numpy(), rtol=rtol, atol=atol, method='RK45', t_eval=t_eval)
+    print(f"total time is {total_time}")
     xs = torch.tensor(res.y, device=device).T.view(-1, batch_size, pose_dim) # [num_steps, bs, pose_dim]
     x = torch.tensor(res.y[:, -1], device=device).reshape(shape) # [bs, pose_dim]
     # denoise, using the predictor step in P-C sampler
@@ -192,5 +198,7 @@ def cond_ode_sampler(
     xs = xs.reshape(batch_size*num_steps, -1)
     xs[:, :3] = xs[:, :3]/xs[:, :3].norm()
     xs[:, 3:] = xs[:, 3:]/xs[:, 3:].norm()
+    x[:3] = x[:3]/x[:3].norm()
+    x[3:] = x[3:]/x[3:].norm()
     xs = xs.reshape(num_steps, batch_size, -1)
     return xs.permute(1, 0, 2), x.to(torch.float32)
